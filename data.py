@@ -1,7 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 import torchvision
-from train import parse_args
+
 
 from torch.utils.data import Dataset
 from torchvision import datasets
@@ -11,12 +11,15 @@ from torch.utils.data import DataLoader
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-args = parse_args()
+
+import train
+args = train.parse_args()
 
 
 
 def load_mnist_loader():
     transform = [
+            #transforms.Grayscale(num_output_channels=1),
             transforms.Resize((args.resize_height, args.resize_width)),
             #transforms.Grayscale(3),
             transforms.ToTensor(),
