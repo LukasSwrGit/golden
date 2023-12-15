@@ -50,6 +50,5 @@ def load_mnist_loader():
     return trainloader, valloader, testloader
 
 if __name__ == "__main__":
-    a, b, c = load_mnist_loader()
 
     pass
