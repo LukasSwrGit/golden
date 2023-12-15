@@ -22,7 +22,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 def parse_args():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--number_samples", type=int, default=10)
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size", type=int, default=1000)
     parser.add_argument("--epoch", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-4)
     #parser.add_argument("--train_path", type=str, default="~/Data/") 
@@ -141,42 +141,49 @@ def classifier_training(model, train_loader, val_loader):
     #load_model(model, 'temp_model.pt')
     return min_val_acc
 
-def prepare_skorch_data(train):
-    
-
-
-    return X, Y
 
 def create_skorch_model():
 
     model = skorch.NeuralNetClassifier(
         module = network.ResNet18(),
-        max_epochs = 20,
+        max_epochs = 10,
         batch_size = 10
 
     )
 
     return model
 
-def grid_search(train):
+def grid_search(model, train):
 
-    
+    train_iter = iter(train)
+    one_batch_train = next(train_iter)
+    X, Y = one_batch_train
 
     search_space = {
-        "lr" : [1e-1, 1e-2, 1e-3, 1e-4, 1e-5],
-        "batch_size" : [8, 16, 32, 64, 128]
+        "lr" : [1e-2, 1e-3, 1e-4],
+        #"batch_size" : [8, 16, 32, 64, 128]
     }
 
     grid_model = GridSearchCV(
-        estimator=skorch_model, 
+        estimator=model, 
         param_grid=search_space, 
-        #scoring = ["r2", "neg_root_mean_squared_error"],
+        #scoring = ["accuracy"],
         #refit="r2",
-        cv=3,
+        cv=5,
         verbose=4
         )
     
-    grid_result = grid_model.fit()
+    grid_result = grid_model.fit(X, Y)
+
+    ###Results:
+    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+    means = grid_result.cv_results_['mean_test_score']
+    stds = grid_result.cv_results_['std_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, stdev, param in zip(means, stds, params):
+        print("%f (%f) with: %r" % (mean, stdev, param))
+
+
 
     return
 
@@ -205,9 +212,7 @@ if __name__ == "__main__":
     model = network.ResNet18()
     
     tensorboard_img_grid(train)
-    
-    X, Y = prepare_skorch_data()
-    grid_search(create_skorch_model(), )
+    grid_search(create_skorch_model(), train)
     
 
     #classifier_training(model, a, b)
