@@ -147,7 +147,7 @@ def create_skorch_model():
     model = skorch.NeuralNetClassifier(
         module = network.ResNet18(),
         max_epochs = 10,
-        batch_size = 10
+        batch_size = 100
 
     )
 
