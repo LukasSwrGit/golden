@@ -23,7 +23,7 @@ class ResNet18(nn.Module):
         self.nr_classes = 10
         self.classif_model = timm.create_model('resnet18', pretrained=args.pretrained)
 
-        self.classif_model.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False) #For Black White 1dim channel to function
+        #self.classif_model.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False) #For Black White 1dim channel to function
 
         self.fc = self.classif_model.fc
         num_ftrs = self.classif_model.fc.in_features           

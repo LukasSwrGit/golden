@@ -15,20 +15,24 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from skopt import BayesSearchCV
+from hpo_methods import grid_search, random_search, bayesian_search
+
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def parse_args():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--number_samples", type=int, default=10)
-    parser.add_argument("--batch_size", type=int, default=1000)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epoch", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--optimizer", type=str, default="adam")
     #parser.add_argument("--train_path", type=str, default="~/Data/") 
     #parser.add_argument("--test_path", type=str, default="~/Data/")
-    parser.add_argument("--resize_height", type=int, default=28)
-    parser.add_argument("--resize_width", type=int, default=28)
+    parser.add_argument("--resize_height", type=int, default=64)
+    parser.add_argument("--resize_width", type=int, default=64)
     parser.add_argument("--pretrained", type=bool, default=False)
     #parser.add_argument("--model_path", type=str, default=f'/home/lukas/TaskPrediction/task-id-prediction/taskid_pred_models/')  #Best: 50_16 2mistakes
     #parser.add_argument("--nr_test_samples", type=float, default=3)
@@ -42,9 +46,12 @@ def classifier_training(model, train_loader, val_loader):
     c_model = model     
     criterion = nn.CrossEntropyLoss()
 
-    optimizer = torch.optim.Adam(c_model.parameters(), lr=args.lr)
+    #optimizer = torch.optim.Adam(c_model.parameters(), lr=args.lr)
     #optimizer = torch.optim.SGD(c_model.parameters(), lr=args.lr, momentum=0.9) #, weight_decay=0.0001)
     #optimizer = swats.SWATS(c_model.parameters(), lr=args.lr)
+
+    optimizer = return_optimizer(c_model)
+
 
     #schedulerG = MultiStepLR(optimizer, milestones=[
     #                                200, 250, 290], gamma=0.1, verbose=True)
@@ -141,6 +148,15 @@ def classifier_training(model, train_loader, val_loader):
     #load_model(model, 'temp_model.pt')
     return min_val_acc
 
+def return_optimizer(c_model):
+    if args.optimizer == "adam": 
+        optimizer = torch.optim.Adam(c_model.parameters(), lr=args.lr)
+    elif args.optimizer == "sgd":
+        optimizer = torch.optim.SGD(c_model.parameters(), lr=args.lr, momentum=0.9)
+    else:
+        print("Error, optimizer not defined.")
+    return optimizer
+
 
 def create_skorch_model():
 
@@ -153,39 +169,6 @@ def create_skorch_model():
 
     return model
 
-def grid_search(model, train):
-
-    train_iter = iter(train)
-    one_batch_train = next(train_iter)
-    X, Y = one_batch_train
-
-    search_space = {
-        "lr" : [1e-2, 1e-3, 1e-4],
-        #"batch_size" : [8, 16, 32, 64, 128]
-    }
-
-    grid_model = GridSearchCV(
-        estimator=model, 
-        param_grid=search_space, 
-        #scoring = ["accuracy"],
-        #refit="r2",
-        cv=5,
-        verbose=4
-        )
-    
-    grid_result = grid_model.fit(X, Y)
-
-    ###Results:
-    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
-    means = grid_result.cv_results_['mean_test_score']
-    stds = grid_result.cv_results_['std_test_score']
-    params = grid_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, param))
-
-
-
-    return
 
 def tensorboard_img_grid(train):
     example = iter(train)
@@ -208,16 +191,14 @@ if __name__ == "__main__":
     import network
     import data
 
-    train, val, test = data.load_mnist_loader()
+    train, val, test = data.load_eurosat_loader()
     model = network.ResNet18()
     
-    tensorboard_img_grid(train)
-    grid_search(create_skorch_model(), train)
-    
-
-    #classifier_training(model, a, b)
-
-
+    #classifier_training(model, train, val)
+    #tensorboard_img_grid(train)
+    #grid_search(create_skorch_model(), train)
+    random_search(create_skorch_model(), train)
+    #bayesian_search(create_skorch_model(), train)
 
     sys.exit()
 
