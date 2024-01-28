@@ -6,9 +6,10 @@ import torch.nn as nn
 import numpy as np
 import sys
 import skorch
-
+#import test
+ 
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter("runs/mnist1")
+writer = SummaryWriter("runs/eurosat1")
 from tqdm import tqdm
 from torch.utils.data import Dataset
 from torchvision import datasets
@@ -22,17 +23,31 @@ from hpo_methods import grid_search, random_search, bayesian_search
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+'''
+batch_size = 32
+
+Gridsearch
+adam, 0.001 
+sgd, 0.1
+
+Randomsearch
+sgd, 0.002175
+sgd, 0.021831
+
+'''
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--number_samples", type=int, default=10)
-    parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--epoch", type=int, default=20)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--optimizer", type=str, default="adam")
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--epoch", type=int, default=50)
+    parser.add_argument("--lr", type=float, default=0.1)
+    parser.add_argument("--optimizer", type=str, default="adagrad")
     #parser.add_argument("--train_path", type=str, default="~/Data/") 
     #parser.add_argument("--test_path", type=str, default="~/Data/")
-    parser.add_argument("--resize_height", type=int, default=64)
-    parser.add_argument("--resize_width", type=int, default=64)
+    parser.add_argument("--resize_height", type=int, default=32)
+    parser.add_argument("--resize_width", type=int, default=32)
     parser.add_argument("--pretrained", type=bool, default=False)
     #parser.add_argument("--model_path", type=str, default=f'/home/lukas/TaskPrediction/task-id-prediction/taskid_pred_models/')  #Best: 50_16 2mistakes
     #parser.add_argument("--nr_test_samples", type=float, default=3)
@@ -40,7 +55,15 @@ def parse_args():
     return parser.parse_args()
 args = parse_args()
 
-def classifier_training(model, train_loader, val_loader):
+'''
+
+batch_size: aus data.py dataloader anfordern und batchsize an load_eurosat_loader() übergeben 
+lr: beim callen von classifier training lr übergeben
+optimizer: beim callen von classifier optimizer übergeben
+
+'''
+
+def classifier_training(model, train_loader, val_loader, test_loader):
 
     training_loss = []
     c_model = model     
@@ -50,7 +73,7 @@ def classifier_training(model, train_loader, val_loader):
     #optimizer = torch.optim.SGD(c_model.parameters(), lr=args.lr, momentum=0.9) #, weight_decay=0.0001)
     #optimizer = swats.SWATS(c_model.parameters(), lr=args.lr)
 
-    optimizer = return_optimizer(c_model)
+    
 
 
     #schedulerG = MultiStepLR(optimizer, milestones=[
@@ -82,12 +105,14 @@ def classifier_training(model, train_loader, val_loader):
                 c_model.train()
                 criterion, c_model, inputs, targets = criterion.to(device), c_model.to(device), inputs.to(device), targets.to(device)
                 
-                optimizer.zero_grad()
+                optimizer = return_optimizer(c_model)
+
+                #optimizer.zero_grad()
                 outputs = c_model(inputs)
-                
                 #score = outputs.max(dim=1)[0]
-                
                 loss = criterion(outputs, targets)
+
+                optimizer.zero_grad()
                 loss.backward()
                 
                 task_targets = targets
@@ -107,8 +132,11 @@ def classifier_training(model, train_loader, val_loader):
                 accuracy = 100 * correct/total
                 pbar.set_postfix_str(f"Loss {loss.item():.3f} - Training Accuracy {accuracy:.2f} ")
                 pbar.update(1)
-                writer.add_scalar('training loss', loss.item(),  epoch * total_steps + nr_batches)
-                writer.add_scalar('accuracy', accuracy,  epoch * total_steps + nr_batches)
+                writer.add_scalar('training loss', loss.item(),  epoch)
+                writer.add_scalar('accuracy', accuracy,  epoch)
+                #writer.add_scalar('training loss', loss.item(),  epoch * total_steps + nr_batches)
+                #writer.add_scalar('accuracy', accuracy,  epoch * total_steps + nr_batches)
+
                 
         valid_loss = 0.0
         total_val=0
@@ -146,25 +174,29 @@ def classifier_training(model, train_loader, val_loader):
     
     print("-Best model by validation loss-")
     #load_model(model, 'temp_model.pt')
+    test.test(test_loader, model, 'temp_model.pt')
+
     return min_val_acc
 
 def return_optimizer(c_model):
     if args.optimizer == "adam": 
         optimizer = torch.optim.Adam(c_model.parameters(), lr=args.lr)
     elif args.optimizer == "sgd":
-        optimizer = torch.optim.SGD(c_model.parameters(), lr=args.lr, momentum=0.9)
+        optimizer = torch.optim.SGD(c_model.parameters(), lr=args.lr)
+    elif args.optimizer == "adagrad":
+        optimizer = torch.optim.Adagrad(c_model.parameters(), lr=args.lr)
+    elif args.optimizer == "rmsprop":
+        optimizer = torch.optim.RMSprop(c_model.parameters(), lr=args.lr)
     else:
         print("Error, optimizer not defined.")
     return optimizer
 
 
 def create_skorch_model():
-
     model = skorch.NeuralNetClassifier(
         module = network.ResNet18(),
-        max_epochs = 10,
-        batch_size = 100
-
+        #max_epochs = 10,
+        #batch_size = 100
     )
 
     return model
@@ -190,14 +222,15 @@ def tensorboard_img_grid(train):
 if __name__ == "__main__":
     import network
     import data
+    import test
 
-    train, val, test = data.load_eurosat_loader()
+    train, val, test_loader = data.load_eurosat_loader()
     model = network.ResNet18()
     
-    #classifier_training(model, train, val)
+    classifier_training(model, train, val, test_loader)
     #tensorboard_img_grid(train)
-    #grid_search(create_skorch_model(), train)
-    random_search(create_skorch_model(), train)
+    #grid_search(create_skorch_model(), data.load_hpo_eurosat_loader())
+    #random_search(create_skorch_model(), data.load_hpo_eurosat_loader())
     #bayesian_search(create_skorch_model(), train)
 
     sys.exit()
