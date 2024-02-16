@@ -62,6 +62,8 @@ def test(test_loader, model, path):
         txtfile.write(f'Hyperparameters: batchsize {args.batch_size} epochs: {args.epoch} lr: {args.lr} optimizer: {args.optimizer} \n \n')
         txtfile.write(str(conf_matrix))
 
+    return accuracy
+
 
 if __name__ == "__main__":
     _, _, test_loader = data.load_eurosat_loader()

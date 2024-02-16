@@ -53,5 +53,5 @@ def plot_confusion_matrix(cm, classes, normalize=False, cmap=plt.cm.Blues):
     if save_path:
         plt.savefig(save_path, format='jpg', dpi=600)
 
-    plt.show()
+    #plt.show()
 

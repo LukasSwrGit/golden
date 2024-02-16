@@ -6,10 +6,11 @@ import torch.nn as nn
 import numpy as np
 import sys
 import skorch
+import itertools
+
 #import test
  
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter("runs/eurosat1")
 from tqdm import tqdm
 from torch.utils.data import Dataset
 from torchvision import datasets
@@ -18,7 +19,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from skopt import BayesSearchCV
-from hpo_methods import grid_search, random_search, bayesian_search
+from hpo_methods import grid_search, random_search, bayesian_search, get_current_time
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -41,14 +42,14 @@ def parse_args():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--number_samples", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--epoch", type=int, default=50)
+    parser.add_argument("--epoch", type=int, default=42)
     parser.add_argument("--lr", type=float, default=0.1)
     parser.add_argument("--optimizer", type=str, default="adagrad")
     #parser.add_argument("--train_path", type=str, default="~/Data/") 
     #parser.add_argument("--test_path", type=str, default="~/Data/")
     parser.add_argument("--resize_height", type=int, default=32)
     parser.add_argument("--resize_width", type=int, default=32)
-    parser.add_argument("--pretrained", type=bool, default=False)
+    parser.add_argument("--pretrained", type=bool, default=True)
     #parser.add_argument("--model_path", type=str, default=f'/home/lukas/TaskPrediction/task-id-prediction/taskid_pred_models/')  #Best: 50_16 2mistakes
     #parser.add_argument("--nr_test_samples", type=float, default=3)
     #parser.add_argument("--data_from_task", type=float, default=0)
@@ -61,12 +62,81 @@ batch_size: aus data.py dataloader anfordern und batchsize an load_eurosat_loade
 lr: beim callen von classifier training lr übergeben
 optimizer: beim callen von classifier optimizer übergeben
 
+
+
+def grid_search():
+        
+    
+    search_space = {
+        "lr" : [1e-1, 1e-2, 1e-3, 1e-4],
+        "optimizer" : ["sgd", "adam", "adagrad"],
+        "batch_size" : [32, 64]
+    }
+
+    lr = 0.001
+    optimizer = "sgd"
+    batch_size = 32
+
+    model = network.ResNet18()
+    train_loader, val_loader, test_loader = data.load_eurosat_loader(batch_size)
+
+    classifier_training(model, train_loader, val_loader, test_loader, optimizer, lr)
+
+    return
 '''
 
-def classifier_training(model, train_loader, val_loader, test_loader):
+def grid_search():
 
-    training_loss = []
-    c_model = model     
+    current_time = get_current_time()
+    search_space = {
+        "lr": [1e-2, 1e-3, 1e-4],
+        "optimizer": ["adam", "sgd"],
+        "batch_size": [64, 128]
+    }
+
+    # Generate all combinations of hyperparameters
+    hyperparameter_combinations = list(itertools.product(search_space['lr'], search_space['optimizer'], search_space['batch_size']))
+
+    best_test_accuracy = 0
+    best_hyperparameter_combination = []
+
+    worst_test_accuracy = 1
+    worst_hyperparameter_combination = []
+
+    # Loop through each combination
+    for lr, optimizer, batch_size in hyperparameter_combinations:
+        writer = SummaryWriter(f"runs/training_lr_{lr}_opt_{optimizer}_bs_{batch_size}_time_{current_time}") 
+
+        print(f"Training with lr={lr}, optimizer={optimizer}, batch_size={batch_size}")
+        
+        # Create a ResNet18 model
+        model = network.ResNet18()
+        
+        # Load data using the current batch size
+        train_loader, val_loader, test_loader = data.load_eurosat_loader(batch_size)
+        
+        # Train the model with the current hyperparameters
+        test_accuracy = classifier_training(model, train_loader, val_loader, test_loader, optimizer, lr, writer)
+
+        if test_accuracy > best_test_accuracy:
+            best_test_accuracy = test_accuracy
+            best_hyperparameter_combination = f"Best performer: \n lr= {lr} optimizer= {optimizer} batch size= {batch_size} with a test accuracy of {100*test_accuracy:.4f}"
+        elif test_accuracy < worst_test_accuracy:
+            worst_test_accuracy = test_accuracy
+            worst_hyperparameter_combination = f"Worst performer: \n lr= {lr} optimizer= {optimizer} batch size= {batch_size} with a test accuracy of {100*test_accuracy:.4f}"
+        
+        print("Training completed for this combination.")
+        writer.flush()
+        writer.close()
+    print(best_hyperparameter_combination)
+    print(worst_hyperparameter_combination)
+
+    return
+
+
+def classifier_training(c_model, train_loader, val_loader, test_loader, optimizer, lr, writer):
+
+    training_loss = [] 
     criterion = nn.CrossEntropyLoss()
 
     #optimizer = torch.optim.Adam(c_model.parameters(), lr=args.lr)
@@ -78,9 +148,19 @@ def classifier_training(model, train_loader, val_loader, test_loader):
 
     #schedulerG = MultiStepLR(optimizer, milestones=[
     #                                200, 250, 290], gamma=0.1, verbose=True)
-    
+
+    c_model.train()
+    criterion, c_model = criterion.to(device), c_model.to(device)
+    optimizer = return_optimizer(c_model, optimizer, lr)
+    epoch = 0
     min_valid_loss = np.inf
     print("Initiating Classifier Training ... ")
+
+    writer.add_scalar('training loss', 2,  epoch)
+    writer.add_scalar('training accuracy', 0,  epoch)
+    writer.add_scalar('validation loss', 2,  epoch)
+    writer.add_scalar('validation accuracy', 0,  epoch)
+
     for epoch in range(0, args.epoch):
         batch_loss = 0
         mean_batch_loss = 0
@@ -93,6 +173,8 @@ def classifier_training(model, train_loader, val_loader, test_loader):
 
         total_steps = len(train_loader)
 
+        
+
         print('\nEpoch: %d' % epoch)
         with tqdm(train_loader, unit="batch", desc="Training") as pbar:
             
@@ -102,10 +184,8 @@ def classifier_training(model, train_loader, val_loader, test_loader):
                 #task_targets = relabel_targets(targets, task)
                 #task_targets = targets
                 
-                c_model.train()
-                criterion, c_model, inputs, targets = criterion.to(device), c_model.to(device), inputs.to(device), targets.to(device)
                 
-                optimizer = return_optimizer(c_model)
+                criterion, c_model, inputs, targets = criterion.to(device), c_model.to(device), inputs.to(device), targets.to(device)
 
                 #optimizer.zero_grad()
                 outputs = c_model(inputs)
@@ -116,7 +196,7 @@ def classifier_training(model, train_loader, val_loader, test_loader):
                 loss.backward()
                 
                 task_targets = targets
-               
+
                 optimizer.step()
                 train_loss += loss.item()
                 losses_batch.append(loss.item())
@@ -132,10 +212,9 @@ def classifier_training(model, train_loader, val_loader, test_loader):
                 accuracy = 100 * correct/total
                 pbar.set_postfix_str(f"Loss {loss.item():.3f} - Training Accuracy {accuracy:.2f} ")
                 pbar.update(1)
-                writer.add_scalar('training loss', loss.item(),  epoch)
-                writer.add_scalar('accuracy', accuracy,  epoch)
-                #writer.add_scalar('training loss', loss.item(),  epoch * total_steps + nr_batches)
-                #writer.add_scalar('accuracy', accuracy,  epoch * total_steps + nr_batches)
+                
+        writer.add_scalar('training loss', loss,  epoch+1)
+        writer.add_scalar('training accuracy', accuracy,  epoch+1)
 
                 
         valid_loss = 0.0
@@ -167,26 +246,28 @@ def classifier_training(model, train_loader, val_loader, test_loader):
             #not really the minimum val_acc, but the val_acc that can be expected given the min_valid_loss
             min_val_acc = val_acc
             # Saving State Dict
-            torch.save(model.state_dict(), 'temp_model.pt')
+            torch.save(c_model.state_dict(), 'temp_model.pt')
             
         #schedulerG.step()
         pbar.close()
+        writer.add_scalar('validation loss', (valid_loss / total_val),  epoch+1)
+        writer.add_scalar('validation accuracy', val_acc,  epoch+1)
     
     print("-Best model by validation loss-")
     #load_model(model, 'temp_model.pt')
-    test.test(test_loader, model, 'temp_model.pt')
+    test_accuracy = test.test(test_loader, c_model, 'temp_model.pt')
 
-    return min_val_acc
+    return test_accuracy
 
-def return_optimizer(c_model):
-    if args.optimizer == "adam": 
-        optimizer = torch.optim.Adam(c_model.parameters(), lr=args.lr)
-    elif args.optimizer == "sgd":
-        optimizer = torch.optim.SGD(c_model.parameters(), lr=args.lr)
-    elif args.optimizer == "adagrad":
-        optimizer = torch.optim.Adagrad(c_model.parameters(), lr=args.lr)
-    elif args.optimizer == "rmsprop":
-        optimizer = torch.optim.RMSprop(c_model.parameters(), lr=args.lr)
+def return_optimizer(c_model, optimizer, lr):
+    if optimizer == "adam": 
+        optimizer = torch.optim.Adam(c_model.parameters(), lr=lr)
+    elif optimizer == "sgd":
+        optimizer = torch.optim.SGD(c_model.parameters(), lr=lr)
+    elif optimizer == "adagrad":
+        optimizer = torch.optim.Adagrad(c_model.parameters(), lr=lr)
+    elif optimizer == "rmsprop":
+        optimizer = torch.optim.RMSprop(c_model.parameters(), lr=lr)
     else:
         print("Error, optimizer not defined.")
     return optimizer
@@ -224,10 +305,10 @@ if __name__ == "__main__":
     import data
     import test
 
-    train, val, test_loader = data.load_eurosat_loader()
-    model = network.ResNet18()
-    
-    classifier_training(model, train, val, test_loader)
+    grid_search()
+    #train, val, test_loader = data.load_eurosat_loader()
+    #model = network.ResNet18()
+    #classifier_training(model, train, val, test_loader)
     #tensorboard_img_grid(train)
     #grid_search(create_skorch_model(), data.load_hpo_eurosat_loader())
     #random_search(create_skorch_model(), data.load_hpo_eurosat_loader())

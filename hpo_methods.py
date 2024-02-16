@@ -22,6 +22,10 @@ from skopt import BayesSearchCV
 from scipy.stats import loguniform
 from datetime import datetime
 
+
+
+#These methods were not used for the final experiment but only during until it was found that GridSearchCV etc. were not working well
+
 def return_gridsearchspace():
 
     search_space = {

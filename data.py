@@ -51,7 +51,9 @@ def load_mnist_loader():
     
     return trainloader, valloader, testloader
 
-def load_eurosat_loader():
+
+
+def load_eurosat_loader(batch_size=args.batch_size):
     transformations = transforms.Compose([
             #transforms.Grayscale(num_output_channels=1),
             transforms.Resize((args.resize_height, args.resize_width)),
@@ -71,11 +73,13 @@ def load_eurosat_loader():
     training_data,  test_data = torch.utils.data.random_split(training_data, [24000, 3000])
     training_data,  validation_data = torch.utils.data.random_split(training_data, [20000, 4000])
 
-    trainloader = DataLoader(training_data, batch_size=args.batch_size, shuffle=True)
-    valloader = DataLoader(validation_data, batch_size=args.batch_size, shuffle=True)
-    testloader = DataLoader(test_data, batch_size=args.batch_size, shuffle=False)
+    trainloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
+    valloader = DataLoader(validation_data, batch_size=batch_size, shuffle=True)
+    testloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
     
     return trainloader, valloader, testloader
+
+
 
 
 def load_hpo_eurosat_loader():
