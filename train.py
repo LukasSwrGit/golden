@@ -50,9 +50,6 @@ def parse_args():
     parser.add_argument("--resize_height", type=int, default=32)
     parser.add_argument("--resize_width", type=int, default=32)
     parser.add_argument("--pretrained", type=bool, default=True)
-    #parser.add_argument("--model_path", type=str, default=f'/home/lukas/TaskPrediction/task-id-prediction/taskid_pred_models/')  #Best: 50_16 2mistakes
-    #parser.add_argument("--nr_test_samples", type=float, default=3)
-    #parser.add_argument("--data_from_task", type=float, default=0)
     return parser.parse_args()
 args = parse_args()
 
@@ -139,16 +136,6 @@ def classifier_training(c_model, train_loader, val_loader, test_loader, optimize
     training_loss = [] 
     criterion = nn.CrossEntropyLoss()
 
-    #optimizer = torch.optim.Adam(c_model.parameters(), lr=args.lr)
-    #optimizer = torch.optim.SGD(c_model.parameters(), lr=args.lr, momentum=0.9) #, weight_decay=0.0001)
-    #optimizer = swats.SWATS(c_model.parameters(), lr=args.lr)
-
-    
-
-
-    #schedulerG = MultiStepLR(optimizer, milestones=[
-    #                                200, 250, 290], gamma=0.1, verbose=True)
-
     c_model.train()
     criterion, c_model = criterion.to(device), c_model.to(device)
     optimizer = return_optimizer(c_model, optimizer, lr)
@@ -167,7 +154,7 @@ def classifier_training(c_model, train_loader, val_loader, test_loader, optimize
         train_loss = 0
         correct = 0
         total = 0
-        total_nr_batches = 35                       #careful hardcoded batch nr
+        total_nr_batches = 35                      
         nr_batches = 0
         accuracy = 0
 
@@ -219,10 +206,8 @@ def classifier_training(c_model, train_loader, val_loader, test_loader, optimize
                 
         valid_loss = 0.0
         total_val=0
-        c_model.eval()     # Optional when not using Model Specific layer
+        c_model.eval()     
         for inputs, targets in val_loader:
-            #Relabel Targets for loss calculation
-            #task_targets = relabel_targets(targets, task)
             task_targets = targets
             inputs, targets = inputs.to(device), targets.to(device)
             
@@ -243,7 +228,6 @@ def classifier_training(c_model, train_loader, val_loader, test_loader, optimize
         if min_valid_loss > (loss) :
             print(f'Validation Loss Decreased({min_valid_loss:.6f}--->{loss:.6f}) \t Saving The Model')
             min_valid_loss = loss
-            #not really the minimum val_acc, but the val_acc that can be expected given the min_valid_loss
             min_val_acc = val_acc
             # Saving State Dict
             torch.save(c_model.state_dict(), 'temp_model.pt')
